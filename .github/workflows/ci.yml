@@ -1,0 +1,111 @@
+# control repo workflow: ci.yml  (site: pr_head)
+# Carries D1 (security-scan matrix SKIPPED_AS_SUCCESS), D3 (type-check NEUTRAL_AS_SUCCESS),
+# D4 (legacy-lint -> lint RENAMED_GATE), the required aggregator (R-W0-10), plus the
+# healthy decoy (unit-tests) and the legacy commit-status decoy (ci/legacy-coverage).
+#
+# Conditions are keyed on the BRANCH NAME (github.head_ref), which is fixed when the
+# pull_request event fires (AUTH r1 Correction 2 -- labels race the run).
+name: ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+  statuses: write
+
+jobs:
+  # Healthy decoy: green on 100% of PR commits.
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: unit tests
+        run: echo "unit tests ok"
+
+  # F2 (r7 / master R-W0-12 cond.3): fold-adversarial NEGATIVE CONTROL. A genuinely DISTINCT job
+  # (not a matrix leg) whose check name shares the 'unit-tests' prefix. Both this and unit-tests
+  # always run and are healthy. If W2's fold rule wrongly merges two distinct jobs by name prefix,
+  # the merge masks one of them and the M7 scan yields a SIXTH finding -- so the control fails
+  # loudly rather than silently. Measured shape U7: two such jobs are emitted together every commit.
+  unit-tests-integration:
+    name: unit-tests (integration)
+    runs-on: ubuntu-latest
+    steps:
+      - name: integration unit tests
+        run: echo "unit-tests (integration) ok"
+
+      # Legacy commit-status decoy: exercises the dual-source read (commit_status).
+      - name: post legacy commit status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST \
+            "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
+            -f state=success -f context=ci/legacy-coverage -f description="legacy coverage ok"
+
+      # D3: a check run named "type-check" created through the Checks API so it can conclude
+      # neutral (a plain job cannot). GITHUB_TOKEN acts as the github-actions[bot] App with
+      # checks:write (HYP 1). Neutral when the head branch is a no-types/ branch.
+      - name: report type-check via Checks API
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const headRef = context.payload.pull_request.head.ref;
+            const neutral = headRef.startsWith('no-types/');
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'type-check',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: neutral ? 'neutral' : 'success',
+            });
+
+  # D1: security gate as a matrix. When it runs it emits expanded legs
+  #   "security-scan (codeql)" / "security-scan (semgrep)";
+  # when the job is skipped (skip-security/ branch) GitHub emits ONE template-named run
+  #   "security-scan (${{ matrix.tool }})"  (probe evidence 4 / HYP 9).
+  # W2 folds these into one family; the folded family is present+skipped on the skip PRs
+  # -> SKIPPED_AS_SUCCESS.
+  security-scan:
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'skip-security/') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [codeql, semgrep]
+    steps:
+      - name: scan
+        run: echo "security scan with ${{ matrix.tool }}"
+
+  # D4: required check that gets renamed to "lint" at the rename PR. The ruleset keeps
+  # requiring the OLD context "legacy-lint" (it is never updated).
+  legacy-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: lint
+        run: echo "legacy-lint ok"
+
+  # The REQUIRED aggregator (R-W0-10 / R-M8-3). Runs even when a dependency skipped
+  # (!cancelled()) and passes unless a dependency actually FAILED (skipped is accepted).
+  # It stays green while security-scan silently skips -> the gap sits beneath it.
+  # Check-run name is "all required checks passed" -- ruff's real-world aggregator name
+  # (probe evidence 6 / AUTH r2 C5), so the control uses a realistic name, not one the
+  # classifier was fitted to. The ruleset requires this exact context.
+  all-required-checks:
+    name: all required checks passed
+    runs-on: ubuntu-latest
+    needs: [unit-tests, security-scan, legacy-lint]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: aggregate
+        run: |
+          results='${{ join(needs.*.result, ',') }}'
+          echo "dependency results: ${results}"
+          case "${results}" in
+            *failure*|*cancelled*)
+              echo "a required dependency failed"; exit 1 ;;
+            *)
+              echo "all dependencies passed or were skipped"; exit 0 ;;
+          esac

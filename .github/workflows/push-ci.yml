@@ -1,0 +1,18 @@
+# control repo workflow: push-ci.yml  (site: landed_commit)
+# Carries D5 (flaky-e2e GATE_DISAPPEARED). Triggered on push to main, so it appears on
+# every landed commit -- squash-merge landings AND direct pushes. The driver DISABLES
+# this workflow via PUT /actions/workflows/{id}/disable after the last pre-disable landed
+# commit (AUTH r1: disable, not delete -- the file stays at HEAD with no condition that
+# explains the gap). Not a required context, so disabling blocks nothing.
+name: push-ci
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  flaky-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: e2e
+        run: echo "e2e ok"

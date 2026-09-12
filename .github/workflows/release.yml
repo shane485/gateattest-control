@@ -1,0 +1,18 @@
+# control repo workflow: release.yml  (site: pr_head)
+# Decoy: a release/publish-style job skipped on EVERY pull request (probe evidence 5).
+# The job's if: is only ever true on a `release` event, so on pull_request it is always
+# skipped and emits a skipped check run "release-please" on every PR head. The naive
+# roadmap rule (presence>=0.98, skip>0) WOULD fire here; W2 must rule it NOT_A_GATE
+# (skipped on 100% of appearances, not required) so it produces no finding.
+name: release
+
+on:
+  pull_request:
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'release' }}
+    steps:
+      - name: release
+        run: echo "release"

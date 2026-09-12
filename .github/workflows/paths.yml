@@ -1,0 +1,19 @@
+# control repo workflow: paths.yml  (site: pr_head)
+# Carries D2 (integration-tests INTERMITTENT_ABSENCE). On a docs-only PR every changed
+# file matches paths-ignore, so the WHOLE workflow does not run and NO check run is
+# created (HYP 8) -- the gate is absent, not skipped. integration-tests is NOT a required
+# context, so the docs-only PR still merges.
+name: paths
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: integration tests
+        run: echo "integration tests ok"
