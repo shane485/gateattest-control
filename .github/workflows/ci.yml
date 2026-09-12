@@ -81,7 +81,7 @@ jobs:
 
   # D4: required check that gets renamed to "lint" at the rename PR. The ruleset keeps
   # requiring the OLD context "legacy-lint" (it is never updated).
-  legacy-lint:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: lint
@@ -96,7 +96,7 @@ jobs:
   all-required-checks:
     name: all required checks passed
     runs-on: ubuntu-latest
-    needs: [unit-tests, security-scan, legacy-lint]
+    needs: [unit-tests, security-scan, lint]
     if: ${{ !cancelled() }}
     steps:
       - name: aggregate
